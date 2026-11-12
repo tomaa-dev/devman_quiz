@@ -34,9 +34,16 @@ def load_quiz_data(folder="quiz-questions"):
     return quiz_data
 
 
-def send_new_question(update: Update, chat_id, quiz_data, r):
+def send_new_question_tg(update, chat_id, quiz_data, r):
     question = random.choice(list(quiz_data.keys()))
     answer = quiz_data[question]
 
     r.set(f"quiz:{chat_id}", answer, ex=3600)
     update.message.reply_text(f"Вопрос:\n{question}")
+
+
+def send_new_question_vk(api, user_id, quiz_data, r, keyboard, send_message):
+    question = random.choice(list(quiz_data.keys()))
+    answer = quiz_data[question]
+    r.set(f"quiz:{user_id}", answer, ex=3600)
+    send_message(api, user_id, f"Вопрос:\n{question}", keyboard)

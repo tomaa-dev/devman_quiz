@@ -10,7 +10,8 @@ from telegram import ForceReply, Update
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
                           Filters, MessageHandler, Updater)
 
-from tools import load_quiz_data, send_new_question
+from tools import load_quiz_data, send_new_question_tg
+
 
 logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
@@ -24,10 +25,10 @@ class State(Enum):
     SOLUTION = 2
 
 
-QUIZ_DATA = load_quiz_data()
-
-
 load_dotenv()
+
+
+QUIZ_DATA = load_quiz_data()
 
 
 r = redis.Redis(
@@ -56,7 +57,7 @@ def handle_new_question_request(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
 
     if text == 'Новый вопрос':
-        send_new_question(update, chat_id, QUIZ_DATA, r)
+        send_new_question_tg(update, chat_id, QUIZ_DATA, r)
         return State.SOLUTION
 
     return State.NEW_QUESTION
@@ -93,7 +94,7 @@ def handle_give_up(update: Update, context: CallbackContext):
         update.message.reply_text(f"Правильный ответ: {saved_answer}")
         r.delete(f"quiz:{chat_id}")
 
-    send_new_question(update, chat_id, QUIZ_DATA, r)
+    send_new_question_tg(update, chat_id, QUIZ_DATA, r)
     return State.SOLUTION
 
 
