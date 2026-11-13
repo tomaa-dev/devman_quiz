@@ -88,9 +88,12 @@ def handle_give_up(update: Update, context: CallbackContext):
     text = update.message.text
     chat_id = update.message.chat_id
 
+    if saved_answer is None:
+        update.message.reply_text("У вас нет активного вопроса. Нажмите «Новый вопрос».")
+        return State.NEW_QUESTION
+
     if text == 'Сдаться':
         saved_answer = r.get(f"quiz:{chat_id}")
-
         update.message.reply_text(f"Правильный ответ: {saved_answer}")
         r.delete(f"quiz:{chat_id}")
 

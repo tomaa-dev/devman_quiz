@@ -66,6 +66,9 @@ def handle_solution_attempt(api, user_id, text, keyboard):
 def handle_give_up(api, user_id, keyboard):
     saved_answer = r.get(f"quiz:{user_id}")
 
+    if saved_answer is None:
+        send_message(api, user_id, "У вас нет активного вопроса. Нажмите «Новый вопрос».", keyboard)
+        return
     send_message(api, user_id, f"Правильный ответ: {saved_answer}", keyboard)
     r.delete(f"quiz:{user_id}")
 
