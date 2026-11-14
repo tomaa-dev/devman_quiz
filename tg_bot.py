@@ -1,21 +1,17 @@
 import logging
 import os
-import random
 from enum import Enum
 
 import redis
 import telegram
 from dotenv import load_dotenv
-from telegram import ForceReply, Update
+from telegram import Update
 from telegram.ext import (CallbackContext, CommandHandler, ConversationHandler,
                           Filters, MessageHandler, Updater)
 
 from tools import load_quiz_data, send_new_question_tg
+from logging_utils import setup_logging
 
-
-logging.basicConfig(
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO
-)
 
 logger = logging.getLogger(__name__)
 
@@ -25,18 +21,7 @@ class State(Enum):
     SOLUTION = 2
 
 
-load_dotenv()
-
-
 QUIZ_DATA = load_quiz_data()
-
-
-r = redis.Redis(
-    host=os.environ.get('REDIS_HOST'),
-    port=int(os.environ.get('REDIS_PORT', 16261)),
-    password=os.environ.get('REDIS_PASSWORD'),
-    decode_responses=True
-)
 
 
 def start(update: Update, context: CallbackContext):
@@ -55,9 +40,10 @@ def start(update: Update, context: CallbackContext):
 def handle_new_question_request(update: Update, context: CallbackContext):
     text = update.message.text
     chat_id = update.message.chat_id
+    redis = context.bot_data['redis']
 
     if text == 'Новый вопрос':
-        send_new_question_tg(update, chat_id, QUIZ_DATA, r)
+        send_new_question_tg(update, chat_id, QUIZ_DATA, redis)
         return State.SOLUTION
 
     return State.NEW_QUESTION
@@ -66,7 +52,9 @@ def handle_new_question_request(update: Update, context: CallbackContext):
 def handle_solution_attempt(update: Update, context: CallbackContext):
     text = update.message.text
     chat_id = update.message.chat_id
-    saved = r.get(f"quiz:{chat_id}")
+    redis = context.bot_data['redis']
+
+    saved = redis.get(f"quiz:{chat_id}")
 
     logger.info("В Redis по id %s лежит: %s", chat_id, saved)
 
@@ -76,34 +64,36 @@ def handle_solution_attempt(update: Update, context: CallbackContext):
 
     if text.strip().lower() == saved.strip().lower():
         update.message.reply_text("Правильно! Поздравляю! Для следующего вопроса нажми «Новый вопрос»")
-        r.incr(f"quiz:score:{chat_id}")
-        r.delete(f"quiz:{chat_id}")
+        redis.incr(f"quiz:score:{chat_id}")
+        redis.delete(f"quiz:{chat_id}")
         return State.NEW_QUESTION
     else:
         update.message.reply_text("Неправильно… Попробуешь ещё раз?")
         return State.SOLUTION
-        
+
 
 def handle_give_up(update: Update, context: CallbackContext):
-    text = update.message.text
     chat_id = update.message.chat_id
+    redis = context.bot_data['redis']
 
-    saved_answer = r.get(f"quiz:{chat_id}")
+    saved_answer = redis.get(f"quiz:{chat_id}")
 
     if saved_answer is None:
         update.message.reply_text("У вас нет активного вопроса. Нажмите «Новый вопрос».")
         return State.NEW_QUESTION
 
     update.message.reply_text(f"Правильный ответ: {saved_answer}")
-    r.delete(f"quiz:{chat_id}")
+    redis.delete(f"quiz:{chat_id}")
 
-    send_new_question_tg(update, chat_id, QUIZ_DATA, r)
+    send_new_question_tg(update, chat_id, QUIZ_DATA, redis)
     return State.SOLUTION
 
 
 def handle_get_score(update: Update, context: CallbackContext):
     chat_id = update.message.chat_id
-    score = r.get(f"quiz:score:{chat_id}") or 0
+    redis = context.bot_data['redis']
+
+    score = redis.get(f"quiz:score:{chat_id}") or 0
     update.message.reply_text(f"Твой счёт: {score}")
     return State.NEW_QUESTION
 
@@ -113,11 +103,30 @@ def stop(update: Update, context: CallbackContext):
     return ConversationHandler.END
 
 
+def error_handler(update: Update, context: CallbackContext):
+    logger.error("Произошла ошибка:", exc_info=context.error)
+
+
 def main():
+    load_dotenv()
+
     tg_token = os.environ['TG_BOT_TOKEN']
+    tg_chat_id = os.environ['TG_CHAT_ID']
+
+    setup_logging(tg_token, tg_chat_id)
+
+    redis_client = redis.Redis(
+        host=os.environ.get('REDIS_HOST'),
+        port=int(os.environ.get('REDIS_PORT', 16261)),
+        password=os.environ.get('REDIS_PASSWORD'),
+        decode_responses=True
+    )
+
     updater = Updater(tg_token)
     dispatcher = updater.dispatcher
-    
+
+    dispatcher.bot_data['redis'] = redis_client
+
     conv_handler = ConversationHandler(
         entry_points=[CommandHandler("start", start)],
 
@@ -127,8 +136,7 @@ def main():
                 MessageHandler(Filters.regex('^Мой счёт$'), handle_get_score),
                 MessageHandler(
                     Filters.text,
-                    handle_new_question_request,
-                    pass_user_data=True
+                    handle_new_question_request
                 ),
             ],
             State.SOLUTION: [
@@ -137,8 +145,7 @@ def main():
                 MessageHandler(Filters.regex('^Мой счёт$'), handle_get_score),
                 MessageHandler(
                     Filters.text,
-                    handle_solution_attempt,
-                    pass_user_data=True
+                    handle_solution_attempt
                 ),
             ]
         },
@@ -146,6 +153,7 @@ def main():
     )
 
     dispatcher.add_handler(conv_handler)
+    dispatcher.add_error_handler(error_handler)
 
     updater.start_polling()
     updater.idle()
