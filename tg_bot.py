@@ -128,14 +128,19 @@ def main():
     dispatcher.bot_data['redis'] = redis_client
 
     conv_handler = ConversationHandler(
-        entry_points=[CommandHandler("start", start)],
+        entry_points=[
+            CommandHandler("start", start),
+            MessageHandler(Filters.regex('^Новый вопрос$'), handle_new_question_request),
+            MessageHandler(Filters.regex('^Сдаться$'), handle_give_up),
+            MessageHandler(Filters.regex('^Мой счёт$'), handle_get_score),
+        ],
 
         states={
             State.NEW_QUESTION: [
                 MessageHandler(Filters.regex('^Сдаться$'), handle_give_up),
                 MessageHandler(Filters.regex('^Мой счёт$'), handle_get_score),
                 MessageHandler(
-                    Filters.text,
+                    Filters.text & ~Filters.command,
                     handle_new_question_request
                 ),
             ],
@@ -144,12 +149,14 @@ def main():
                 MessageHandler(Filters.regex('^Сдаться$'), handle_give_up),
                 MessageHandler(Filters.regex('^Мой счёт$'), handle_get_score),
                 MessageHandler(
-                    Filters.text,
+                    Filters.text & ~Filters.command,
                     handle_solution_attempt
                 ),
             ]
         },
-        fallbacks=[CommandHandler("stop", stop)],
+        fallbacks=[
+            CommandHandler("start", start),
+            CommandHandler("stop", stop)],
     )
 
     dispatcher.add_handler(conv_handler)
