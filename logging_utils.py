@@ -10,8 +10,6 @@ class MyLogsHandler(logging.Handler):
         self.chat_id = chat_id
 
     def emit(self, record):
-        if record.name == 'telegram.ext.dispatcher' or record.name == 'MyLogsHandler':
-            pass
         log_entry = self.format(record)
         try:
             self.bot.send_message(chat_id=self.chat_id, text=log_entry)
@@ -28,7 +26,7 @@ def setup_logging(tg_token, chat_id):
     bot = telegram.Bot(token=tg_token)
 
     handler = MyLogsHandler(bot, chat_id)
-    handler.setLevel(logging.INFO)
+    handler.setLevel(logging.ERROR)
     handler.setFormatter(logging.Formatter('%(message)s'))
 
     logging.getLogger().addHandler(handler)
